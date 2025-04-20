@@ -10,7 +10,7 @@ executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
 
 def comm_robot():
-    rtde_c = RTDEControlInterface("169.254.9.43")
+    rtde_c = RTDEControlInterface("192.168.1.102")
     print("Connected to UR5")
     while True:
         global torques

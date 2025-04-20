@@ -8,7 +8,7 @@ import threading
 """
 JOYSTICK_CONTROL:
 
-Code for software review. Joystick (using Serial Monitor) / Keyboard control for UR5 arm.
+Joystick (using Serial Monitor) / Keyboard control for UR5 arm. 
 
 Warnings:
     General:
@@ -16,21 +16,20 @@ Warnings:
         - Watch values for VEL_STEP and ANG_STEP
         - Always use rtde_run = False before testing with UR5.
         - set rtde_run to True if you are connected to UR5.
-        - Change the endpoint velocities below
 
     Joystick:
         - In order to use Joystick Control, you must have a Serial Monitor running on a different window.
-          To read the serial monitor, you MUST replace portName with the ESP32's port.
+        - To read the serial monitor, you MUST replace portName with the ESP32's port.
 
     Keyboard:
         - Keybinds:     AD (-X, +X), WS (+Y, -Y), ZX (+Z, -Z), EQ (+YAW, -YAW)
+        - To turn vacuum on/off, you must be running "j_vacuum.cpp" on the joystick, and open the joystick's
+          serial monitor.  
         - Tip: Click into the terminal before using the keyboard so you don't edit the code.
-
-
 """
 
-controlMODE = "joystick" # "keyboard" or "joystick"
-portName = '/dev/ttyACM1'
+controlMODE = "keyboard" # "keyboard" or "joystick"
+portName = '/dev/ttyACM0'
 rtde_run = True
 
 if controlMODE == "joystick":
@@ -50,7 +49,7 @@ def joystickConvert(data):
     new_data = [0,0,0,0,0,0]
     new_data[:2] = data[:2]
     new_data[2] = data[2] - data[3]
-    new_data[5] = data[4] - data[5]
+    # new_data[5] = data[4] - data[5] # REPLACE WITH NEW BUTTON FUNCTIONS (Blue button not needed, since it communicates to vacuum directly)
     
     linear = [val * VEL_STEP for val in new_data[0:3]]
     angular = [val * ANG_STEP for val in new_data[3:]]
@@ -92,6 +91,9 @@ def keyboardLoop(rtde_c, rtde_run, VEL_STEP, ANG_STEP):
 
     def on_press(key):
         try:
+            if key.char != "e":
+                serial_port.write(b"on: False \n")
+
             if key.char == 'w':
                 velocity_cmd[1] = VEL_STEP  # +Y
             elif key.char == 's':
@@ -101,9 +103,11 @@ def keyboardLoop(rtde_c, rtde_run, VEL_STEP, ANG_STEP):
             elif key.char == 'd':
                 velocity_cmd[0] = VEL_STEP  # +X
             elif key.char == 'e':
-                velocity_cmd[5] = ANG_STEP  # +yaw
-            elif key.char == 'q':
-                velocity_cmd[5] = -ANG_STEP  # -yaw
+                serial_port.write(b"on: True \n")
+            # elif key.char == 'e':
+            #     velocity_cmd[5] = ANG_STEP  # +yaw
+            # elif key.char == 'q':
+            #     velocity_cmd[5] = -ANG_STEP  # -yaw
             elif key.char == 'z':
                 velocity_cmd[2] = VEL_STEP  # +Z
             elif key.char == 'x':
@@ -144,9 +148,9 @@ if __name__ == '__main__':
     running = True
     #if rtde_run == True: rtde_c.moveL(init_position)
     # Connect to the ESP32. You can use PlatformIO to find its COM port. Remember that the COM port is different in BOOT mode than when code is running!
+    serial_port = serial.Serial(port=portName, baudrate=115200, timeout=1, write_timeout=1)
     if controlMODE == "joystick":
         j = 0
-        serial_port = serial.Serial(port=portName, baudrate=115200, timeout=1, write_timeout=1)
         while (j< 100000 and running):
             running = joystickLoop()
             j+=1
