@@ -29,7 +29,7 @@ Warnings:
 """
 
 controlMODE = "keyboard" # "keyboard" or "joystick"
-portName = '/dev/ttyACM0'
+portName = '/dev/ttyACM1'
 rtde_run = True
 
 if controlMODE == "joystick":
@@ -39,7 +39,7 @@ elif controlMODE == "keyboard":
     VEL_STEP = 0.03
     ANG_STEP = 0.1
 
-#init_position = [0.155, -0.508, -0.113, 0, 3.14, 0] # DECIDE LATER WITH A TA
+#init_position = [0.155, -0.508, -0.113, 3.14, 0, 0] # DECIDE LATER WITH A TA
 
 if rtde_run:
     rtde_c = RTDEControl("192.168.1.103")
@@ -85,6 +85,8 @@ def joystickLoop():
 
     return True  # Still running unless joystickStop triggered
 
+
+## READ MULTIPLE KEYS AT ONCE.
 def keyboardLoop(rtde_c, rtde_run, VEL_STEP, ANG_STEP):
     velocity_cmd = [0, 0, 0, 0, 0, 0]
     running = [True]  # Using a list for mutability inside closures
@@ -98,17 +100,17 @@ def keyboardLoop(rtde_c, rtde_run, VEL_STEP, ANG_STEP):
                 velocity_cmd[1] = VEL_STEP  # +Y
             elif key.char == 's':
                 velocity_cmd[1] = -VEL_STEP  # -Y
-            elif key.char == 'a':
+            if key.char == 'a':
                 velocity_cmd[0] = -VEL_STEP  # -X
             elif key.char == 'd':
                 velocity_cmd[0] = VEL_STEP  # +X
-            elif key.char == 'e':
+            if key.char == 'e':
                 serial_port.write(b"on: True \n")
             # elif key.char == 'e':
             #     velocity_cmd[5] = ANG_STEP  # +yaw
             # elif key.char == 'q':
             #     velocity_cmd[5] = -ANG_STEP  # -yaw
-            elif key.char == 'z':
+            if key.char == 'z':
                 velocity_cmd[2] = VEL_STEP  # +Z
             elif key.char == 'x':
                 velocity_cmd[2] = -VEL_STEP  # -Z

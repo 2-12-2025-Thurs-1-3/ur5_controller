@@ -10,6 +10,8 @@ init_q = rtde_r.getActualQ()
 new_q = init_q[:]
 new_q[0] += 0.20
 
+
+print(new_q)
 # Move asynchronously in joint space to new_q, we specify asynchronous behavior by setting the async parameter to
 # 'True'. Try to set the async parameter to 'False' to observe a default synchronous movement, which cannot be stopped
 # by the stopJ function due to the blocking behaviour.
