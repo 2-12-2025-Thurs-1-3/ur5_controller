@@ -3,16 +3,15 @@ import numpy as np
 import cv2  # OpenCV module
 import time
 from tkinter import *
-import speed_moveL as control
 
 # Constants and other global variables
-CAMERAID = 0 # CHANGE AS NECESSARY
+CAMERAID = 6 # CHANGE AS NECESSARY
 camera = cv2.VideoCapture(CAMERAID) # define camera
 colorID = [0,0,0,0]
-COLORS = [(0,255,120),(255,120,120),(0,69,255),(255,255,255)]
+COLORS = [(0,255,120),(255,120,120),(0,69,255),(255,255,255)] # Yellow, Blue, Orange, Clear
 POINTS = [(.69154,-.600138),(.67307,-.135855),(.1763488,-.1238),(.13237,-.63746)] # Calibrate from robot
 MYPOINTS = [(33,403),(350,400),(370,67),(25,25)] # Equivalent in pixels
-TOPCUTOFF = 50 # How far from top before sending data
+TOPCUTOFF = 80 # How far from top before sending data
 BOTTCUTOFF = 300 # How far from bottom before beginning data collection
 DT=.05 
 src = np.array(MYPOINTS)
@@ -20,14 +19,14 @@ dst = np.array(POINTS)
 
 #Threshold Values
 # yellow 
-lower_bound_HSV_yellow = np.array([21, 39, 103]) 
-upper_bound_HSV_yellow = np.array([36, 255, 255])
+lower_bound_HSV_yellow = np.array([24, 0, 220]) 
+upper_bound_HSV_yellow = np.array([40, 255, 255])
 # blue 
 lower_bound_HSV_blue = np.array([71, 135, 68])
 upper_bound_HSV_blue = np.array([105, 255, 255])
 # orange 
-lower_bound_HSV_orange = np.array([13, 90, 200])
-upper_bound_HSV_orange = np.array([25, 255, 255])
+lower_bound_HSV_orange = np.array([8, 0, 220])
+upper_bound_HSV_orange = np.array([29, 255, 255])
 thresholds = [[lower_bound_HSV_yellow,upper_bound_HSV_yellow],
               [lower_bound_HSV_blue,upper_bound_HSV_blue],
                [lower_bound_HSV_orange,upper_bound_HSV_orange],
@@ -69,12 +68,12 @@ class Bottle:
         for i in range(100):
             self.future[i] = (self.pos[-1][0]+self.velX*dT*i,self.pos[-1][1]+self.velY*dT*i,curr_time+dT*i)
     def send_data(self):
-        rvelX = (self.robot_pos[-1][0]-self.robot_pos[0][0])/(self.time[-1]-self.time[0])
-        rvelY = (self.robot_pos[-1][1]-self.robot_pos[0][1])/(self.time[-1]-self.time[0])
+        rvelY = (self.robot_pos[-1][0]-self.robot_pos[-25][0])/(self.time[-1]-self.time[-25])
+        print(len(self.robot_pos))
         distance = abs(self.robot_pos[-1][0]+.3)
         self.exp_time = distance/(abs(rvelY))
-        return (self.exp_time, self.color, self.robot_pos[-1][0])
-        print(self.exp_time, self.color, self.robot_pos[-1][0])
+        return (self.exp_time,self.color,self.robot_pos[-1][1])
+        print(self.exp_time,self.color,self.robot_pos[-1][0])
 
 def find_contours(image):
     contoursss, _ = cv2.findContours(image, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
@@ -112,13 +111,13 @@ def track_one(bottle):
             new = (H[0,0]*cX+H[0,1]*cY+H[0,2],H[1,0]*cX+H[1,1]*cY+H[1,2])
             if cY<TOPCUTOFF:
                 if bru<5:
-                    break
-                grab_time, color, y_pos = bottle.send_data()
-                break
+                    return None
+                bottle.send_data()
+                return bottle.send_data()
             elif cY>BOTTCUTOFF:
-                break
+                return None
         else:
-            break
+            return None
 
         bottle.update_pos((cX,cY),new)
         bottle.find_velocity()
@@ -132,15 +131,15 @@ def track_one(bottle):
         cv2.imshow("Original",cv_image)
         if bottle.color == 0:
             cv2.imshow("Opening - Yellow", opening)
-        if bottle.color == 1:
+        elif bottle.color == 1:
             cv2.imshow("Opening - Blue", opening)
-        if bottle.color == 2:
+        elif bottle.color == 2:
             cv2.imshow("Opening - Orange", opening)
-        if bottle.color == 3:
+        elif bottle.color == 3:
             cv2.imshow("Opening - Clear", opening)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             cv2.destroyAllWindows()
-            break
+            return None
 
 # The main loop of the function
 def detect():
@@ -182,7 +181,9 @@ def detect():
                 new = (H[0,0]*cX+H[0,1]*cY+H[0,2],H[1,0]*cX+H[1,1]*cY+H[1,2])
                 if cY<BOTTCUTOFF and cY>TOPCUTOFF+50:
                     track = Bottle(img,(cX,cY),new)
-                    track_one(track)
+                    data = track_one(track)
+                    if data != None:
+                        return data
 
         #cv2.circle(cv_image, (33,403), 7, (255, 255, 255), -1)
         #cv2.circle(cv_image, (350,400), 7, (255, 255, 255), -1)

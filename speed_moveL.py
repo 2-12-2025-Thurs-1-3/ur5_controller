@@ -2,17 +2,21 @@ import rtde_receive
 import rtde_control
 import time
 import serial
+import Final_CoM as cv
 
 rtde_r = rtde_receive.RTDEReceiveInterface("192.168.1.103")
 rtde_c = rtde_control.RTDEControlInterface("192.168.1.103")
 
 portName = '/dev/ttyACM1'
 
+
+ORANGE_BOTTLE_COUNT = 0
+
 ## Bin Positions (x, y, z, rx, ry, rz)
 positions = {"yellow": [0.11874185587583301, -0.7891758751405292, 0.125397598041483435, -2.341806743327856, 2.0681131911584973, -0.03818426020594277],
              "blue": [-0.1525171470714167, -0.8030085393136451, 0.12541064764556142, -2.3417794446943234, 2.0680696902802116, -0.03818361678440171],
              "green": [-0.41902641634478266, -0.7951756441194379, 0.125368432165289723, -2.3417937824894195, 2.068177972269544, -0.038187638517122306],
-             "colab": [0.36197288587652526, -0.7951662181724354, 0.125394826729175105, -2.3417869726414136, 2.0681194592170717, -0.038135188173779394],
+             "collab": [0.36197288587652526, -0.7951662181724354, 0.125394826729175105, -2.3417869726414136, 2.0681194592170717, -0.038135188173779394],
              "neutral": [0.015466521999787283, -0.4899471595439902, 0.23258818072260725, -2.3417131655824277, 2.0681925358661806, -0.03821438995733724],
              "standby": [-0.29992314772168255, -0.4899471595439902, 0.05152892504111392,  -2.3417131655824277, 2.0681925358661806, -0.03821438995733724]
 
@@ -81,6 +85,21 @@ def speed_moveL(target_pose, bounds=False, force=False, vacuum=False):
     # Stop the robot
     rtde_c.speedL([0, 0, 0, 0, 0, 0], acceleration, 0)
 
+def bin_logic(color):
+    global ORANGE_BOTTLE_COUNT
+    if color == 0:
+        return positions["yellow"]
+    if color == 1:
+        return positions["blue"]
+    if color == 2:
+        ORANGE_BOTTLE_COUNT += 1
+        if ORANGE_BOTTLE_COUNT == 4:
+            return positions["collab"]
+        else:
+            return False
+    if color == 3:
+        return positions["green"]
+
 # # NEEDS TESTING
 # def speed_followL(target_pose, speed):
 #     pose = rtde_r.getActualTCPPose()
@@ -110,13 +129,13 @@ def throw():
     print("STOP")
     rtde_c.speedL([0, 0, 0, 0, 0, 0], acceleration, 0)  # Stop immediately
 
-def autonomy(y_pos, color, time_to_grab):
+def autonomy(time_to_grab, color, y_pos):
     start_time = time.time()    
-    pickup_time = 0.5
+    pickup_time = -0.1
     speed_moveL(positions["standby"])
 
-    target = pose.copy
-    target[1] = y_pos[1]
+    target = positions["standby"].copy()
+    target[1] = y_pos
 
     speed_moveL(target, vacuum=True)
 
@@ -126,40 +145,60 @@ def autonomy(y_pos, color, time_to_grab):
         serial_port.write(b"on: True \n")
         time.sleep(0.1)
 
+    target_bin = bin_logic(color)
+    if not target_bin:
+        return
+
     target[2] = -0.012677585773136338
     rtde_c.zeroFtSensor()
     speed_moveL(target, force=True, vacuum=True)
     speed_moveL(positions["neutral"], vacuum=True)
+
     if not hold_check():
         return
     
+    speed_moveL(target_bin, vacuum=True)
+    serial_port.write(b"on: False \n")
+    time.sleep(1)
+    speed_moveL(positions["neutral"])
+    return
     
 
-
 if __name__ == '__main__':
+
+    serial_port = serial.Serial(port=portName, baudrate=115200, timeout=1, write_timeout=1)
+    while True:
+        data = cv.detect()
+        print(data)
+        if data is not None:
+            autonomy(*data)
+        
+
     # PRINT ENDPOINT POSITION
     pose = rtde_r.getActualTCPPose()
 
-    print(pose)
+    # print(pose)
 
-    serial_port = serial.Serial(port=portName, baudrate=115200, timeout=1, write_timeout=1)
+    # serial_port = serial.Serial(port=portName, baudrate=115200, timeout=1, write_timeout=1)
 
-    # speed_moveL(positions["standby"])
-    # target = positions["standby"]
+    # # speed_moveL(positions["standby"])
+    # # target = positions["standby"]
+    # # target[2] = -0.012677585773136338
+    # # speed_moveL(target, vacuum=True, force=True)
+
+    # target = pose.copy()
     # target[2] = -0.012677585773136338
-    # speed_moveL(target, vacuum=True, force=True)
 
-    target = pose.copy()
-    target[2] = -0.012677585773136338
-
-    start_time = time.time()
-    while time.time() - start_time < 2:
-        serial_port.write(b"on: True \n")
-        time.sleep(0.25)
-    rtde_c.zeroFtSensor()
-    speed_moveL(target, force=True, vacuum=True)
-    speed_moveL(positions["neutral"], vacuum=True)
-    print(hold_check())
+    # start_time = time.time()
+    # while time.time() - start_time < 2:
+    #     serial_port.write(b"on: True \n")
+    #     time.sleep(0.25)
+    # rtde_c.zeroFtSensor()
+    # speed_moveL(target, force=True, vacuum=True)
+    # speed_moveL(positions["neutral"], vacuum=True)
+    # print(hold_check())
+    # speed_moveL(positions["green"], vacuum=True)
+    # serial_port.write(b"on: False \n")
 
     # target = pose.copy()
     # target[0] += 0.1
