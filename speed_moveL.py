@@ -7,8 +7,7 @@ import Final_CoM as cv
 rtde_r = rtde_receive.RTDEReceiveInterface("192.168.1.103")
 rtde_c = rtde_control.RTDEControlInterface("192.168.1.103")
 
-portName = '/dev/ttyACM1'
-
+portName = '/dev/ttyACM0'
 
 ORANGE_BOTTLE_COUNT = 0
 
@@ -21,13 +20,6 @@ positions = {"yellow": [0.11874185587583301, -0.7891758751405292, 0.125397598041
              "standby": [-0.29992314772168255, -0.4899471595439902, 0.05152892504111392,  -2.3417131655824277, 2.0681925358661806, -0.03821438995733724]
 
 }
-
-## Ideal Bounding Box (During gripping)
-bounding_box = {"max": [-0.39074419281582623, -0.7766767888560709, 0.2364383950071206, -2.2125974178272223, -2.2092962831368443, 0.13271170247340863],
-                "min": [0.41258058953437127, -0.15293392223319435, -0.02370832529093643, -2.4345706525566944, -1.9513767250305556, 0.05129300432761595]}
-
-## Position where end effector is too close to base (make sure radius is always greater)
-close = [0.17345416286195572, -0.22936740746653966, 0.02083577751346813, 2.650814714806161, 1.5789849693467959, -0.01100979896306741]
 
 ## Check xyz magnitude of vector
 def vector_magnitude(delta_pose):
@@ -42,19 +34,13 @@ def hold_check():
         total_force += rtde_r.getActualTCPForce()[2]
         serial_port.write(b"on: True \n")
     average_force = total_force/i
+    print(average_force)
     return average_force < -0.15
 
 ## Check for contact with bottle.
 def force_check(z_force):
     current_force = rtde_r.getActualTCPForce()
     return current_force[2] < z_force
-
-## Check if current pose is within bounds.
-def in_bounds(pose):
-    return (pose[0] > bounding_box["max"][0] and pose[0] < bounding_box["min"][0] and
-        pose[1] > bounding_box["max"][1] and pose[1] < bounding_box["min"][1] and
-        pose[2] < bounding_box["max"][2] and pose[2] > bounding_box["min"][2] and
-        vector_magnitude(close) <  vector_magnitude(pose) )
 
 # Go to target (x,y,z) position.
 def speed_moveL(target_pose, bounds=False, force=False, vacuum=False):
@@ -100,14 +86,6 @@ def bin_logic(color):
     if color == 3:
         return positions["green"]
 
-# # NEEDS TESTING
-# def speed_followL(target_pose, speed):
-#     pose = rtde_r.getActualTCPPose()
-#     speed = [max(-0.25, min(0.25, target_pose[i] - pose[i])) for i in range(6)] # Task-space P control with a maximum speed threshold and gain Kp = 1
-#     rtde_c.speedL(speed, 2, 0)
-#     time.sleep(0.1)
-
-## Throw bottle!
 def throw():
     speed = [0, -1, 0, 0, 0, 0]
     acceleration = 4.0
@@ -130,32 +108,33 @@ def throw():
     rtde_c.speedL([0, 0, 0, 0, 0, 0], acceleration, 0)  # Stop immediately
 
 def autonomy(time_to_grab, color, y_pos):
+    
     start_time = time.time()    
-    pickup_time = -0.1
-    speed_moveL(positions["standby"])
+    pickup_time = 0
 
-    target = positions["standby"].copy()
-    target[1] = y_pos
-
-    speed_moveL(target, vacuum=True)
-
-    cur_time = time.time()
-    while ( time_to_grab - (cur_time-start_time) - pickup_time > 0):
-        cur_time = time.time()
-        serial_port.write(b"on: True \n")
-        time.sleep(0.1)
+    grab_target = positions["standby"].copy()
+    grab_target[1] = y_pos
 
     target_bin = bin_logic(color)
     if not target_bin:
         return
 
-    target[2] = -0.012677585773136338
+    speed_moveL(grab_target, vacuum=True)
+
+    while ( time_to_grab - (time.time()-start_time) - pickup_time > 0):
+        serial_port.write(b"on: True \n")
+        time.sleep(0.01)
+
+
+    grab_target[2] = -0.04286568666613467
     rtde_c.zeroFtSensor()
-    speed_moveL(target, force=True, vacuum=True)
+    speed_moveL(grab_target, force=True, vacuum=True)
+    time.sleep(0.25)
     speed_moveL(positions["neutral"], vacuum=True)
 
-    if not hold_check():
-        return
+    # time.sleep(1)
+    # if not hold_check():
+    #     return
     
     speed_moveL(target_bin, vacuum=True)
     serial_port.write(b"on: False \n")
@@ -163,100 +142,16 @@ def autonomy(time_to_grab, color, y_pos):
     speed_moveL(positions["neutral"])
     return
     
-
-if __name__ == '__main__':
-
-    serial_port = serial.Serial(port=portName, baudrate=115200, timeout=1, write_timeout=1)
+def autonomy_loop():
+    rtde_c.moveL(positions["neutral"])
     while True:
         data = cv.detect()
         print(data)
         if data is not None:
             autonomy(*data)
-        
+            speed_moveL(positions["neutral"], vacuum=True)
 
-    # PRINT ENDPOINT POSITION
-    pose = rtde_r.getActualTCPPose()
-
-    # print(pose)
-
-    # serial_port = serial.Serial(port=portName, baudrate=115200, timeout=1, write_timeout=1)
-
-    # # speed_moveL(positions["standby"])
-    # # target = positions["standby"]
-    # # target[2] = -0.012677585773136338
-    # # speed_moveL(target, vacuum=True, force=True)
-
-    # target = pose.copy()
-    # target[2] = -0.012677585773136338
-
-    # start_time = time.time()
-    # while time.time() - start_time < 2:
-    #     serial_port.write(b"on: True \n")
-    #     time.sleep(0.25)
-    # rtde_c.zeroFtSensor()
-    # speed_moveL(target, force=True, vacuum=True)
-    # speed_moveL(positions["neutral"], vacuum=True)
-    # print(hold_check())
-    # speed_moveL(positions["green"], vacuum=True)
-    # serial_port.write(b"on: False \n")
-
-    # target = pose.copy()
-    # target[0] += 0.1
-    # speed_moveL(target, vacuum=True)
-    
-    # start_time = time.time()
-    # while time.time() - start_time < 2:
-    #     serial_port.write(b"on: True \n")
-    #     time.sleep(0.25)
-    # rtde_c.zeroFtSensor()
-    # print("ZEROED")
-    # while time.time() - start_time < 2:
-    #     serial_port.write(b"on: True \n")
-    #     time.sleep(0.25)
-    # print(hold_check())
-    # print(hold_check())
-    # print(hold_check())
-    # print(hold_check())
-    # # throw()
-    # serial_port.close()
-
-
-
-    # # GO TO LOCATIONS.
-    # speed_moveL(positions["standby"])
-    # speed_moveL(positions["green"])
-    # speed_moveL(positions["blue"])
-    # speed_moveL(positions["yellow"])
-    # speed_moveL(positions["colab"])
-    # speed_moveL(positions["colab"])
-
-    # pickuptime = 1
-    # time limit
-
-    # # AUTONOMY TEST
-    # speed_moveL(positions["standby"])
-    # target = pose.copy
-    # target[1] = bottle.pos[1]
-
-    # speed_moveL(target, vacuum=True)
-
-    # while ( time_til_pickup - pickup_time > 0):
-    #     time.sleep(0.2)
-
-
-    # # CHECK BOX LIMITS
-    # position = bounding_box["max"]
-    # speed_moveL(position)
-
-    # target = position
-    # target[0] = bounding_box["min"][0]
-
-    # speed_moveL(target)
-    # position = target
-    # target[1] = bounding_box["min"][1]
-
-    # speed_moveL(target)
-    # position = target
-    # target[2] = bounding_box["min"][2]
-
-    # speed_moveL(target)
+if __name__ == '__main__':
+    serial_port = serial.Serial(port=portName, baudrate=115200, timeout=1, write_timeout=1)
+    autonomy_loop()
+    serial_port.close()
