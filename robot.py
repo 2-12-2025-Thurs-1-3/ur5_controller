@@ -6,12 +6,11 @@ import Final_CoM as cv
 
 rtde_r = rtde_receive.RTDEReceiveInterface("192.168.1.103")
 rtde_c = rtde_control.RTDEControlInterface("192.168.1.103")
-
 portName = '/dev/ttyACM0'
 
 ORANGE_BOTTLE_COUNT = 0
 
-## Bin Positions (x, y, z, rx, ry, rz)
+# Bin Positions (x, y, z, rx, ry, rz)
 positions = {"yellow": [0.11874185587583301, -0.7891758751405292, 0.125397598041483435, -2.341806743327856, 2.0681131911584973, -0.03818426020594277],
              "blue": [-0.1525171470714167, -0.8030085393136451, 0.12541064764556142, -2.3417794446943234, 2.0680696902802116, -0.03818361678440171],
              "green": [-0.41902641634478266, -0.7951756441194379, 0.125368432165289723, -2.3417937824894195, 2.068177972269544, -0.038187638517122306],
@@ -21,10 +20,11 @@ positions = {"yellow": [0.11874185587583301, -0.7891758751405292, 0.125397598041
 
 }
 
-## Check xyz magnitude of vector
+# Check xyz magnitude of vector
 def vector_magnitude(delta_pose):
     return (sum([d*d for d in delta_pose[:3]]))**0.5  # Only XYZ translation error
 
+# True if bottle is held
 def hold_check():
     start_time = time.time()
     i = 0
@@ -37,13 +37,13 @@ def hold_check():
     print(average_force)
     return average_force < -0.15
 
-## Check for contact with bottle.
+# Check for endpoint force exceeding "z_force"
 def force_check(z_force):
     current_force = rtde_r.getActualTCPForce()
     return current_force[2] < z_force
 
 # Go to target (x,y,z) position.
-def speed_moveL(target_pose, bounds=False, force=False, vacuum=False):
+def moveL(target_pose, force=False, vacuum=False):
     move_duration = 0.1
     acceleration = 2.0
     tolerance = 0.005  # 5 mm
@@ -51,7 +51,7 @@ def speed_moveL(target_pose, bounds=False, force=False, vacuum=False):
     pose = rtde_r.getActualTCPPose()
     delta_pose = [target_pose[i] - pose[i] for i in range(6)]
 
-    while vector_magnitude(delta_pose) > tolerance and ((in_bounds(pose) or not bounds) and (force_check(10.0) or not force)):
+    while vector_magnitude(delta_pose) > tolerance and (force_check(10.0) or not force):
 
         if vacuum:
             serial_port.write(b"on: True \n")
@@ -71,6 +71,7 @@ def speed_moveL(target_pose, bounds=False, force=False, vacuum=False):
     # Stop the robot
     rtde_c.speedL([0, 0, 0, 0, 0, 0], acceleration, 0)
 
+# Given bottle color, where bottle should go.
 def bin_logic(color):
     global ORANGE_BOTTLE_COUNT
     if color == 0:
@@ -86,6 +87,7 @@ def bin_logic(color):
     if color == 3:
         return positions["green"]
 
+# TEST CODE
 def throw():
     speed = [0, -1, 0, 0, 0, 0]
     acceleration = 4.0
@@ -107,6 +109,7 @@ def throw():
     print("STOP")
     rtde_c.speedL([0, 0, 0, 0, 0, 0], acceleration, 0)  # Stop immediately
 
+# Grab and place bottle in bin.
 def autonomy(time_to_grab, color, y_pos):
     
     start_time = time.time()    
@@ -119,7 +122,7 @@ def autonomy(time_to_grab, color, y_pos):
     if not target_bin:
         return
 
-    speed_moveL(grab_target, vacuum=True)
+    moveL(grab_target, vacuum=True)
 
     while ( time_to_grab - (time.time()-start_time) - pickup_time > 0):
         serial_port.write(b"on: True \n")
@@ -128,20 +131,17 @@ def autonomy(time_to_grab, color, y_pos):
 
     grab_target[2] = -0.04286568666613467
     rtde_c.zeroFtSensor()
-    speed_moveL(grab_target, force=True, vacuum=True)
+    moveL(grab_target, force=True, vacuum=True)
     time.sleep(0.25)
-    speed_moveL(positions["neutral"], vacuum=True)
-
-    # time.sleep(1)
-    # if not hold_check():
-    #     return
+    moveL(positions["neutral"], vacuum=True)
     
-    speed_moveL(target_bin, vacuum=True)
+    moveL(target_bin, vacuum=True)
     serial_port.write(b"on: False \n")
     time.sleep(1)
-    speed_moveL(positions["neutral"])
+    moveL(positions["neutral"])
     return
-    
+
+# Runs autonomy in a loop.   
 def autonomy_loop():
     rtde_c.moveL(positions["neutral"])
     while True:
@@ -149,7 +149,7 @@ def autonomy_loop():
         print(data)
         if data is not None:
             autonomy(*data)
-            speed_moveL(positions["neutral"], vacuum=True)
+            moveL(positions["neutral"], vacuum=True)
 
 if __name__ == '__main__':
     serial_port = serial.Serial(port=portName, baudrate=115200, timeout=1, write_timeout=1)

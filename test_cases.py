@@ -3,10 +3,9 @@ import rtde_control
 import time
 import serial
 import Final_CoM as cv
-import speed_moveL as sp
+import robot as sp
 
 portName = "/dev/ttyACM0"
-
 rtde_r = rtde_receive.RTDEReceiveInterface("192.168.1.103")
 rtde_c = rtde_control.RTDEControlInterface("192.168.1.103")
 
