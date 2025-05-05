@@ -28,16 +28,12 @@ Warnings:
         - Tip: Click into the terminal before using the keyboard so you don't edit the code.
 """
 
-controlMODE = "keyboard" # "keyboard" or "joystick"
 portName = '/dev/ttyACM1'
 rtde_run = True
 
-if controlMODE == "joystick":
-    VEL_STEP = 0.05
-    ANG_STEP = 0.2
-elif controlMODE == "keyboard":
-    VEL_STEP = 0.03
-    ANG_STEP = 0.1
+
+VEL_STEP = 0.1
+ANG_STEP = 0.2
 
 #init_position = [0.155, -0.508, -0.113, 3.14, 0, 0] # DECIDE LATER WITH A TA
 
@@ -50,7 +46,6 @@ def joystickConvert(data):
     new_data[:2] = data[:2]
     new_data[2] = data[2] - data[3]
     # new_data[5] = data[4] - data[5] # REPLACE WITH NEW BUTTON FUNCTIONS (Blue button not needed, since it communicates to vacuum directly)
-    
     linear = [val * VEL_STEP for val in new_data[0:3]]
     angular = [val * ANG_STEP for val in new_data[3:]]
     new_data = linear + angular         # Get velocities
@@ -151,16 +146,12 @@ if __name__ == '__main__':
     #if rtde_run == True: rtde_c.moveL(init_position)
     # Connect to the ESP32. You can use PlatformIO to find its COM port. Remember that the COM port is different in BOOT mode than when code is running!
     serial_port = serial.Serial(port=portName, baudrate=115200, timeout=1, write_timeout=1)
-    if controlMODE == "joystick":
-        j = 0
-        while (j< 100000 and running):
-            running = joystickLoop()
-            j+=1
-        serial_port.close()
+    j = 0
+    while (j< 100000 and running):
+        running = joystickLoop()
+        j+=1
+    serial_port.close()
 
-    elif controlMODE == "keyboard":
-        if rtde_run: keyboardLoop(rtde_c, rtde_run, VEL_STEP, ANG_STEP)
-        else: keyboardLoop(0, 0, VEL_STEP, ANG_STEP)
 
 
 # Stop the RTDE control script

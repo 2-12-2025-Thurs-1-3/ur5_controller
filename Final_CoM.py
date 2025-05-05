@@ -8,10 +8,14 @@ from tkinter import *
 CAMERAID = 6 # CHANGE AS NECESSARY
 camera = cv2.VideoCapture(CAMERAID) # define camera
 colorID = [0,0,0,0]
+OFFSET = .02
 COLORS = [(0,255,120),(255,120,120),(0,69,255),(255,255,255)] # Yellow, Blue, Orange, Clear
-POINTS = [(.69154,-.600138),(.67307,-.135855),(.1763488,-.1238),(.13237,-.63746)] # Calibrate from robot
-MYPOINTS = [(33,403),(350,400),(370,67),(25,25)] # Equivalent in pixels
-TOPCUTOFF = 80 # How far from top before sending data
+#POINTS = [(.69154,-.600138),(.67307,-.135855),(.1763488,-.1731145598126),(.13237,-.63746)] # Calibrate from robot
+#MYPOINTS = [(33,403),(350,400),(370,67),(25,25)] # Equivalent in pixels
+POINTS = [[.4,-.600138],[.4,-.135855],[0.14355, -0.12404],[.13237,-.63746]]
+MYPOINTS = [(29,200),(346,218),(368,47),(18,22)]
+POINTS = [[_[0], _[1]-OFFSET] for _ in POINTS]
+TOPCUTOFF = 90 # How far from top before sending data
 BOTTCUTOFF = 300 # How far from bottom before beginning data collection
 DT=.05 
 src = np.array(MYPOINTS)
@@ -45,6 +49,9 @@ b = [0]*8 + [1]
 H = np.reshape(np.linalg.solve(A, b), (3,3))
 #print(H)
 
+print(H[0,0]*1+H[0,1]*1+H[0,2],H[1,0]*1+H[1,1]*1+H[1,2])
+print(H[0,0]*439+H[0,1]*1+H[0,2],H[1,0]*439+H[1,1]*1+H[1,2])
+
 #Defining Bottle Class
 class Bottle:
     def __init__(self,clr: int, pos: list,rpos: list):
@@ -73,7 +80,6 @@ class Bottle:
         distance = abs(self.robot_pos[-1][0]+.3)
         self.exp_time = distance/(abs(rvelY))
         return (self.exp_time,self.color,self.robot_pos[-1][1])
-        print(self.exp_time,self.color,self.robot_pos[-1][0])
 
 def find_contours(image):
     contoursss, _ = cv2.findContours(image, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
@@ -95,15 +101,16 @@ def track_one(bottle):
             mask_HSV = cv2.inRange(hsv_image, thresholds[bottle.color][0], thresholds[bottle.color][1])
             opening = cv2.morphologyEx(mask_HSV, cv2.MORPH_OPEN, kernel, iterations = num_iterations)
         else:
-            cannyIm = cv2.Canny(cv_image, 50, 150, apertureSize = 3)
+            gry = cv2.cvtColor(cv_image,cv2.COLOR_BGR2GRAY)
+            cannyIm = cv2.Canny(gry, 100, 150, apertureSize = 3)
+            for i in range(10):
+                for j in range(len(cannyIm)):
+                    cannyIm[j][len(cannyIm[0])-(i+1)] = 0
             opening = cv2.morphologyEx(cannyIm, cv2.MORPH_CLOSE, kernel, iterations = num_iterations)
         contours = find_contours(opening)
         cv2.drawContours(cv_image, contours, -1, COLORS[bottle.color],3)
         if (len(contours)==1):
-            # Compute the center of the contour
-            M = cv2.moments(contours[0])
-            cX = int(M["m10"] / M["m00"])
-            cY = int(M["m01"] / M["m00"])
+            cX,cY = find_CoM(bottle.color,contours,cv_image)
             # # Draw the contour and center of the shape on the image (our viewing)
             cv2.circle(cv_image, (cX, cY), 7, (255, 255, 255), -1)
             cv2.putText(cv_image, "center", (cX - 20, cY - 20),
@@ -147,15 +154,19 @@ def detect():
     while True:
         # Read from the camera frame by frame and crop
         ret, cv_image1 = camera.read()
-        cv_image = cv_image1[0:440,138:540]
+        cv_image = cv_image1[0:430,138:540]
         hsv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2HSV)
         
         # create four color masks
         mask_HSV_yellow = cv2.inRange(hsv_image, lower_bound_HSV_yellow, upper_bound_HSV_yellow)
         mask_HSV_blue = cv2.inRange(hsv_image, lower_bound_HSV_blue, upper_bound_HSV_blue)
         mask_HSV_orange = cv2.inRange(hsv_image, lower_bound_HSV_orange, upper_bound_HSV_orange)
-        cannyIm = cv2.Canny(cv_image, 50, 150, apertureSize = 3)
-
+        #cannyIm = cv2.Canny(cv_image, 50, 150, apertureSize = 3)
+        gry = cv2.cvtColor(cv_image,cv2.COLOR_BGR2GRAY)
+        cannyIm = cv2.Canny(gry, 100, 150, apertureSize = 3)
+        for i in range(10):
+            for j in range(len(cannyIm)):
+                cannyIm[j][len(cannyIm[0])-(i+1)] = 0
         kernel = np.ones((7,7),np.uint8)
         num_iterations = 3
 
@@ -170,16 +181,17 @@ def detect():
         for img in range(len(images)):
             contours = find_contours(images[img])
             if len(contours)==1:
-                # Compute the center of the contour
-                M = cv2.moments(contours[0])
-                cX = int(M["m10"] / M["m00"])
-                cY = int(M["m01"] / M["m00"])
-                # # Draw the contour and center of the shape on the image (our viewing)
+                cX,cY = find_CoM(img,contours,cv_image)
+                
                 cv2.circle(cv_image, (cX, cY), 7, (255, 255, 255), -1)
                 cv2.putText(cv_image, "center", (cX - 20, cY - 20),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
                 new = (H[0,0]*cX+H[0,1]*cY+H[0,2],H[1,0]*cX+H[1,1]*cY+H[1,2])
-                if cY<BOTTCUTOFF and cY>TOPCUTOFF+50:
+                if img == 3:
+                    offset = 10
+                else:
+                    offset=0
+                if cY<BOTTCUTOFF-offset and cY>TOPCUTOFF+50:
                     track = Bottle(img,(cX,cY),new)
                     data = track_one(track)
                     if data != None:
@@ -200,6 +212,26 @@ def detect():
         if cv2.waitKey(1) & 0xFF == ord('q'):
             cv2.destroyAllWindows()
             break
+
+def find_CoM(color,contours,cv_image):
+    if color != 3:
+        # Compute the center of the contour
+        M = cv2.moments(contours[0])
+        cX = int(M["m10"] / M["m00"])
+        cY = int(M["m01"] / M["m00"])
+    else:
+        rect = cv2.minAreaRect(contours[0])
+        box = np.intp(cv2.boxPoints(rect))
+        cv2.drawContours(cv_image, [box], 0, (0, 255, 0), 2)
+        cX = 0
+        cY = 0
+        for point in box:
+            cX = cX+point[0]/4
+            cY = cY+point[1]/4
+        cX = np.intp(cX)
+        cY = np.intp(cY)
+        print(len(contours))
+    return cX, cY
 
 if __name__=='__main__':
     detect()

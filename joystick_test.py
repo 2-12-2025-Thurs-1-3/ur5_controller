@@ -6,21 +6,13 @@ import Final_CoM as cv
 
 rtde_r = rtde_receive.RTDEReceiveInterface("192.168.1.103")
 rtde_c = rtde_control.RTDEControlInterface("192.168.1.103")
-portName = '/dev/ttyACM1'
+portName = '/dev/ttyACM0'
 
 ORANGE_BOTTLE_COUNT = 0
-PICKUP_TIME = -0.2
+VEL_STEP = 0.1
+ANG_STEP = 0.2
 
 ## SPEED 1.5
-
-
-# ## CHANGES FROM LAST NIGHT:
-# Added knockoff function and condition in autonomy loop.
-
-# Todo:
-# FIND PUSH START, THROW END.
-# PUSH DELAY
-# IF NOT WORKING REMOVE ALL MENTIONS OF KNOCKOFF
 
 # Bin Positions (x, y, z, rx, ry, rz)
 positions = {"yellow": [0.11874185587583301, -0.7891758751405292, 0.125397598041483435, -2.341806743327856, 2.0681131911584973, -0.03818426020594277],
@@ -103,7 +95,7 @@ def moveJ(target_pose, vacuum=False):
 
         speed = [0, 0, 0, 0, 0, 0]
         for i in range(6):
-            speed[i] = max(-0.5, min(0.5, delta_pose[i]))  # Clip 
+            speed[i] = max(-0.25, min(0.25, delta_pose[i]))  # Clip 
         
 
         rtde_c.speedJ(speed, acceleration, move_duration)
@@ -137,60 +129,12 @@ def throw(color):
         start_time = time.time()
         while time.time() - start_time < 1:
             serial_port.write(b"on: False \n")
-            time.sleep(0.25)
+            time.sleep(0.25)    
     else:
         moveL(bin_logic(color),vacuum=True)
         dunk()
 
     rtde_c.speedL([0, 0, 0, 0, 0, 0], acceleration, 0)  # Stop immediately
-
-# Grab and place bottle in bin.
-def autonomy(time_to_grab, color, y_pos):
-    
-    start_time = time.time()    
-    if y_pos > -0.17311455981260457:
-        y_pos = -.1731145598126
-
-    grab_target = positions["standby"].copy()
-    grab_target[1] = y_pos
-
-    target_bin = bin_logic(color)
-    if not target_bin:
-        return
-
-    moveL(grab_target, vacuum=True)
-
-    while ( time_to_grab - (time.time()-start_time) - PICKUP_TIME > 0):
-        serial_port.write(b"on: True \n")
-        time.sleep(0.01)
-
-    if color == 3:
-        time.sleep(0)
-        knock_off()
-        return
-
-    grab_target[2] = -0.04286568666613467
-    rtde_c.zeroFtSensor()
-    moveL(grab_target, force=True, vacuum=True)
-    time.sleep(0.25)
-    moveL(positions["neutral"], vacuum=True)
-
-    # if not hold_check():
-    #     moveL(positions["neutral"], vacuum=True)
-    #     return 
-    
-    throw(color)
-    return
-
-# Runs autonomy in a loop.   
-def autonomy_loop():
-    rtde_c.moveL(positions["neutral"])
-    while True:
-        data = cv.detect()
-        print(data)
-        if data is not None:
-            autonomy(*data)
-            moveL(positions["neutral"])
 
 def dunk():
     move_duration = 1
@@ -232,17 +176,114 @@ def smh_head():
     moveJ(original)
     return
 
+# Grab and place bottle in bin.
+def autonomy(time_to_grab, color, y_pos):
+    
+    start_time = time.time()    
+    pickup_time = 0
 
-def knock_off():
-    start_position = None
-    moveL(start_position)
-    target_position = start_position.copy()
-    target_position[1] = -0.6
-    moveL(target_position)
+    if y_pos > -0.17311455981260457:
+        y_pos = -.1731145598126
 
+    grab_target = positions["standby"].copy()
+    grab_target[1] = y_pos
 
+    target_bin = bin_logic(color)
+    if not target_bin:
+        return
+
+    moveL(grab_target, vacuum=True)
+
+    while ( time_to_grab - (time.time()-start_time) - pickup_time > 0):
+        serial_port.write(b"on: True \n")
+        time.sleep(0.01)
+
+    grab_target[2] = -0.04286568666613467
+    rtde_c.zeroFtSensor()
+    moveL(grab_target, force=True, vacuum=True)
+    time.sleep(0.25)
+    moveL(positions["neutral"], vacuum=True)
+
+    start_time = time.time()
+    while time.time() - start_time < 2:
+        if not joystickStop():
+            return True  
+        time.sleep(0.25)
+    
+    # if not hold_check():
+    #     moveL(positions["neutral"], vacuum=True)
+    #     return 
+    
+    throw(color)
+    return
+
+# Runs autonomy in a loop.   
+def autonomy_loop():
+    rtde_c.moveL(positions["neutral"])
+    while True:
+        data = cv.detect()
+        print(data)
+        if data is not None:
+            if autonomy(*data):
+                return True
+            moveL(positions["neutral"])
+
+# JOYSTICK LAND
+def joystickConvert(data):
+    new_data = [0,0,0,0,0,0]
+    new_data[:2] = data[:2]
+    new_data[2] = data[2] - data[3]
+    # new_data[5] = data[4] - data[5] # REPLACE WITH NEW BUTTON FUNCTIONS (Blue button not needed, since it communicates to vacuum directly)
+    
+    linear = [val * VEL_STEP for val in new_data[0:3]]
+    angular = [val * ANG_STEP for val in new_data[3:]]
+    new_data = linear + angular         # Get velocities
+    return new_data
+
+def joystickStop():
+    try:
+        esp32_output = serial_port.readline().decode('utf-8').strip()
+        vals = esp32_output.split(",")
+        data = [float(val.strip()) for val in vals[:-1]]
+        if len(data) < 6:
+            return False
+        if not (data[2] or data[3] or data[4] or data[5]):
+            return data
+    except:
+        pass
+    return False
+
+def joystickLoop():
+    try:
+        if serial_port.in_waiting > 0:
+            data = joystickStop()
+            print(data)
+            if not data:  # Stop condition
+                return True
+            convert = joystickConvert(data)
+            rtde_c.speedL(convert)
+            serial_port.reset_input_buffer()
+        else:
+            time.sleep(0.00101)  # Allow loop to rest
+
+    except Exception as e:
+        print(1)
+
+    return False  # Still running unless joystickStop triggered
 
 if __name__ == '__main__':
+    #if rtde_run == True: rtde_c.moveL(init_position)
+    # Connect to the ESP32. You can use PlatformIO to find its COM port. Remember that the COM port is different in BOOT mode than when code is running!
     serial_port = serial.Serial(port=portName, baudrate=115200, timeout=1, write_timeout=1)
-    autonomy_loop()
-    serial_port.close()
+
+    changeMode = False
+    joystickMode = True
+    while True:
+        if joystickMode:
+            changeMode = joystickLoop()
+            print("JOYSTICK")
+        else:
+            changeMode = autonomy_loop()
+        if changeMode:
+            joystickMode = not joystickMode
+            changeMode = False
