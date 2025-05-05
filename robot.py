@@ -6,7 +6,7 @@ import Final_CoM as cv
 
 rtde_r = rtde_receive.RTDEReceiveInterface("192.168.1.103")
 rtde_c = rtde_control.RTDEControlInterface("192.168.1.103")
-portName = '/dev/ttyACM1'
+portName = '/dev/ttyACM0'
 
 ORANGE_BOTTLE_COUNT = 0
 PICKUP_TIME = -0.2
@@ -164,11 +164,6 @@ def autonomy(time_to_grab, color, y_pos):
         serial_port.write(b"on: True \n")
         time.sleep(0.01)
 
-    if color == 3:
-        time.sleep(0)
-        knock_off()
-        return
-
     grab_target[2] = -0.04286568666613467
     rtde_c.zeroFtSensor()
     moveL(grab_target, force=True, vacuum=True)
@@ -231,15 +226,6 @@ def smh_head():
     time.sleep(move_duration)
     moveJ(original)
     return
-
-
-def knock_off():
-    start_position = None
-    moveL(start_position)
-    target_position = start_position.copy()
-    target_position[1] = -0.6
-    moveL(target_position)
-
 
 
 if __name__ == '__main__':
